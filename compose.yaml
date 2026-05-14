@@ -1,5 +1,6 @@
 services:
   seerr:
+    container_name: seerFAV
     build:
       context: .
       dockerfile: Dockerfile.local
