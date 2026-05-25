@@ -4,6 +4,7 @@ import { MediaStatus, MediaType } from '@server/constants/media';
 import { MediaServerType } from '@server/constants/server';
 import { getRepository } from '@server/datasource';
 import { Blocklist } from '@server/entity/Blocklist';
+import { Favorites } from '@server/entity/Favorites';
 import type { User } from '@server/entity/User';
 import { Watchlist } from '@server/entity/Watchlist';
 import type { DownloadingItem } from '@server/lib/downloadtracker';
@@ -49,7 +50,13 @@ class Media {
           'watchlist',
           'media.id= watchlist.media and watchlist.requestedBy = :userId',
           { userId: user?.id }
-        ) //,
+        )
+        .leftJoinAndSelect(
+          'media.favorites',
+          'favorites',
+          'media.id = favorites.media and favorites.requestedBy = :userId',
+          { userId: user?.id }
+        )
         .where(' media.tmdbId in (:...finalIds)', { finalIds })
         .getMany();
 
@@ -114,6 +121,9 @@ class Media {
 
   @OneToMany(() => Watchlist, (watchlist) => watchlist.media)
   public watchlists: null | Watchlist[];
+
+  @OneToMany(() => Favorites, (favorite) => favorite.media)
+  public favorites: null | Favorites[];
 
   @OneToMany(() => Season, (season) => season.media, {
     cascade: true,

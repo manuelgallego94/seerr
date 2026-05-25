@@ -36,13 +36,14 @@ import { sortCrewPriority } from '@app/utils/creditHelpers';
 import defineMessages from '@app/utils/defineMessages';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
 import { Disclosure, Transition } from '@headlessui/react';
-import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, HeartIcon } from '@heroicons/react/24/outline';
 import {
   ArrowRightCircleIcon,
   CogIcon,
   ExclamationTriangleIcon,
   EyeSlashIcon,
   FilmIcon,
+  HeartIcon as HeartIconSolid,
   MinusCircleIcon,
   PlayIcon,
   StarIcon,
@@ -65,7 +66,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
-import useSWR from 'swr';
+import { FAVORITE_IDS_KEY } from '@app/hooks/useFavoriteIds';
+import useSWR, { mutate as globalMutate } from 'swr';
 
 const messages = defineMessages('components.TvDetails', {
   firstAirDate: 'First Air Date',
@@ -105,6 +107,11 @@ const messages = defineMessages('components.TvDetails', {
   watchlistError: 'Something went wrong. Please try again.',
   removefromwatchlist: 'Remove From Watchlist',
   addtowatchlist: 'Add To Watchlist',
+  favoritesSuccess: '<strong>{title}</strong> added to favorites!',
+  favoritesDeleted: '<strong>{title}</strong> removed from favorites.',
+  favoritesError: 'Something went wrong. Please try again.',
+  removefromfavorites: 'Remove From Favorites',
+  addtofavorites: 'Add To Favorites',
 });
 
 interface TvDetailsProps {
@@ -124,6 +131,11 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
   const [toggleWatchlist, setToggleWatchlist] = useState<boolean>(
     !tv?.onUserWatchlist
   );
+  const [isFavorite, setIsFavorite] = useState<boolean>(
+    tv?.onUserFavorites ?? false
+  );
+  const [isFavoritesUpdating, setIsFavoritesUpdating] =
+    useState<boolean>(false);
   const [isBlocklistUpdating, setIsBlocklistUpdating] =
     useState<boolean>(false);
   const [showBlocklistModal, setShowBlocklistModal] = useState(false);
@@ -412,6 +424,62 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
     }
   };
 
+  const onClickAddFavoriteBtn = async (): Promise<void> => {
+    setIsFavoritesUpdating(true);
+    try {
+      await axios.post('/api/v1/favorites', {
+        tmdbId: tv?.id,
+        mediaType: MediaType.TV,
+        title: tv?.name,
+      });
+      addToast(
+        <span>
+          {intl.formatMessage(messages.favoritesSuccess, {
+            title: tv?.name,
+            strong: (msg: React.ReactNode) => <strong>{msg}</strong>,
+          })}
+        </span>,
+        { appearance: 'success', autoDismiss: true }
+      );
+      setIsFavorite(true);
+      globalMutate(FAVORITE_IDS_KEY);
+    } catch {
+      addToast(intl.formatMessage(messages.favoritesError), {
+        appearance: 'error',
+        autoDismiss: true,
+      });
+    } finally {
+      setIsFavoritesUpdating(false);
+    }
+  };
+
+  const onClickRemoveFavoriteBtn = async (): Promise<void> => {
+    setIsFavoritesUpdating(true);
+    try {
+      await axios.delete(
+        `/api/v1/favorites/${tv?.id}?mediaType=${MediaType.TV}`
+      );
+      addToast(
+        <span>
+          {intl.formatMessage(messages.favoritesDeleted, {
+            title: tv?.name,
+            strong: (msg: React.ReactNode) => <strong>{msg}</strong>,
+          })}
+        </span>,
+        { appearance: 'info', autoDismiss: true }
+      );
+      setIsFavorite(false);
+      globalMutate(FAVORITE_IDS_KEY);
+    } catch {
+      addToast(intl.formatMessage(messages.favoritesError), {
+        appearance: 'error',
+        autoDismiss: true,
+      });
+    } finally {
+      setIsFavoritesUpdating(false);
+    }
+  };
+
   const onClickHideItemBtn = async (): Promise<void> => {
     setIsBlocklistUpdating(true);
 
@@ -658,6 +726,33 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                 )}
               </>
             )}
+          {data?.mediaInfo?.status !== MediaStatus.BLOCKLISTED && (
+            <Tooltip
+              content={intl.formatMessage(
+                isFavorite
+                  ? messages.removefromfavorites
+                  : messages.addtofavorites
+              )}
+              tooltipConfig={{ placement: 'top-end' }}
+            >
+              <Button
+                buttonType={'ghost'}
+                className="z-40 mr-2"
+                buttonSize={'md'}
+                onClick={
+                  isFavorite ? onClickRemoveFavoriteBtn : onClickAddFavoriteBtn
+                }
+              >
+                {isFavoritesUpdating ? (
+                  <Spinner />
+                ) : isFavorite ? (
+                  <HeartIconSolid className="text-rose-500" />
+                ) : (
+                  <HeartIcon />
+                )}
+              </Button>
+            </Tooltip>
+          )}
           <div className="z-20">
             <PlayButton links={mediaLinks} />
           </div>

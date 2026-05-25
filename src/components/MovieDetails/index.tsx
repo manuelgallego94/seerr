@@ -39,6 +39,7 @@ import {
   ExclamationTriangleIcon,
   EyeSlashIcon,
   FilmIcon,
+  HeartIcon,
   MinusCircleIcon,
   PlayIcon,
   StarIcon,
@@ -47,6 +48,7 @@ import {
 import {
   ChevronDoubleDownIcon,
   ChevronDoubleUpIcon,
+  HeartIcon as HeartIconSolid,
 } from '@heroicons/react/24/solid';
 import { type RatingResponse } from '@server/api/ratings';
 import { IssueStatus } from '@server/constants/issue';
@@ -61,7 +63,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
-import useSWR from 'swr';
+import { FAVORITE_IDS_KEY } from '@app/hooks/useFavoriteIds';
+import useSWR, { mutate as globalMutate } from 'swr';
 
 const messages = defineMessages('components.MovieDetails', {
   originaltitle: 'Original Title',
@@ -106,6 +109,11 @@ const messages = defineMessages('components.MovieDetails', {
   watchlistError: 'Something went wrong. Please try again.',
   removefromwatchlist: 'Remove From Watchlist',
   addtowatchlist: 'Add To Watchlist',
+  favoritesSuccess: '<strong>{title}</strong> added to favorites!',
+  favoritesDeleted: '<strong>{title}</strong> removed from favorites.',
+  favoritesError: 'Something went wrong. Please try again.',
+  removefromfavorites: 'Remove From Favorites',
+  addtofavorites: 'Add To Favorites',
 });
 
 interface MovieDetailsProps {
@@ -128,6 +136,11 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
   const [toggleWatchlist, setToggleWatchlist] = useState<boolean>(
     !movie?.onUserWatchlist
   );
+  const [isFavorite, setIsFavorite] = useState<boolean>(
+    movie?.onUserFavorites ?? false
+  );
+  const [isFavoritesUpdating, setIsFavoritesUpdating] =
+    useState<boolean>(false);
   const [isBlocklistUpdating, setIsBlocklistUpdating] =
     useState<boolean>(false);
   const [showBlocklistModal, setShowBlocklistModal] = useState(false);
@@ -382,6 +395,62 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
     }
   };
 
+  const onClickAddFavoriteBtn = async (): Promise<void> => {
+    setIsFavoritesUpdating(true);
+    try {
+      await axios.post('/api/v1/favorites', {
+        tmdbId: movie?.id,
+        mediaType: MediaType.MOVIE,
+        title: movie?.title,
+      });
+      addToast(
+        <span>
+          {intl.formatMessage(messages.favoritesSuccess, {
+            title: movie?.title,
+            strong: (msg: React.ReactNode) => <strong>{msg}</strong>,
+          })}
+        </span>,
+        { appearance: 'success', autoDismiss: true }
+      );
+      setIsFavorite(true);
+      globalMutate(FAVORITE_IDS_KEY);
+    } catch {
+      addToast(intl.formatMessage(messages.favoritesError), {
+        appearance: 'error',
+        autoDismiss: true,
+      });
+    } finally {
+      setIsFavoritesUpdating(false);
+    }
+  };
+
+  const onClickRemoveFavoriteBtn = async (): Promise<void> => {
+    setIsFavoritesUpdating(true);
+    try {
+      await axios.delete(
+        `/api/v1/favorites/${movie?.id}?mediaType=${MediaType.MOVIE}`
+      );
+      addToast(
+        <span>
+          {intl.formatMessage(messages.favoritesDeleted, {
+            title: movie?.title,
+            strong: (msg: React.ReactNode) => <strong>{msg}</strong>,
+          })}
+        </span>,
+        { appearance: 'info', autoDismiss: true }
+      );
+      setIsFavorite(false);
+      globalMutate(FAVORITE_IDS_KEY);
+    } catch {
+      addToast(intl.formatMessage(messages.favoritesError), {
+        appearance: 'error',
+        autoDismiss: true,
+      });
+    } finally {
+      setIsFavoritesUpdating(false);
+    }
+  };
+
   const onClickHideItemBtn = async (): Promise<void> => {
     setIsBlocklistUpdating(true);
 
@@ -616,6 +685,33 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
                 )}
               </>
             )}
+          {data?.mediaInfo?.status !== MediaStatus.BLOCKLISTED && (
+            <Tooltip
+              content={intl.formatMessage(
+                isFavorite
+                  ? messages.removefromfavorites
+                  : messages.addtofavorites
+              )}
+              tooltipConfig={{ placement: 'top-end' }}
+            >
+              <Button
+                buttonType={'ghost'}
+                className="z-40 mr-2"
+                buttonSize={'md'}
+                onClick={
+                  isFavorite ? onClickRemoveFavoriteBtn : onClickAddFavoriteBtn
+                }
+              >
+                {isFavoritesUpdating ? (
+                  <Spinner />
+                ) : isFavorite ? (
+                  <HeartIconSolid className="text-rose-500" />
+                ) : (
+                  <HeartIcon />
+                )}
+              </Button>
+            </Tooltip>
+          )}
           <div className="z-20">
             <PlayButton links={mediaLinks} />
           </div>
